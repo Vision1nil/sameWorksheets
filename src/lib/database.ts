@@ -337,3 +337,133 @@ export async function getUserAnalytics(userId: string): Promise<AnalyticsData> {
     recentActivity: userProgress.slice(-10), // Last 10 activities
   };
 }
+// Add this to the end of your src/lib/database.ts file
+
+// Helper function to format time
+export function formatTimeSpent(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+}
+
+// Student Analytics Interface (add this interface)
+export interface StudentAnalytics {
+  totalWorksheets: number;
+  averageScore: number;
+  totalTimeSpent: number;
+  progressByType: Record<string, { completed: number; averageScore: number }>;
+  progressByGrade: Record<string, { completed: number; averageScore: number }>;
+}
+
+// Create analytics function for students
+export async function getStudentAnalytics(studentId: string): Promise<StudentAnalytics> {
+  const progress = await getStudentProgress(studentId);
+  const userWorksheets = await getUserWorksheets(studentId);
+  
+  const totalWorksheets = progress.length;
+  const averageScore = totalWorksheets > 0 
+    ? progress.reduce((sum, p) => sum + (p.score / p.totalQuestions * 100), 0) / totalWorksheets
+    : 0;
+  const totalTimeSpent = progress.reduce((sum, p) => sum + p.timeSpent, 0);
+  
+  // Group by worksheet type
+  const progressByType: Record<string, { completed: number; averageScore: number }> = {};
+  const progressByGrade: Record<string, { completed: number; averageScore: number }> = {};
+  
+  for (const prog of progress) {
+    const worksheet = userWorksheets.find(w => w.id === prog.worksheetId);
+    if (worksheet) {
+      // By type
+      const type = worksheet.type;
+      if (!progressByType[type]) {
+        progressByType[type] = { completed: 0, averageScore: 0 };
+      }
+      progressByType[type].completed++;
+      progressByType[type].averageScore += prog.score / prog.totalQuestions * 100;
+      
+      // By grade
+      const grade = worksheet.grade;
+      if (!progressByGrade[grade]) {
+        progressByGrade[grade] = { completed: 0, averageScore: 0 };
+      }
+      progressByGrade[grade].completed++;
+      progressByGrade[grade].averageScore += prog.score / prog.totalQuestions * 100;
+    }
+  }
+  
+  // Calculate averages
+  Object.values(progressByType).forEach(data => {
+    if (data.completed > 0) {
+      data.averageScore = data.averageScore / data.completed;
+    }
+  });
+  
+  Object.values(progressByGrade).forEach(data => {
+    if (data.completed > 0) {
+      data.averageScore = data.averageScore / data.completed;
+    }
+  });
+  
+  return {
+    totalWorksheets,
+    averageScore,
+    totalTimeSpent,
+    progressByType,
+    progressByGrade
+  };
+}
+
+// Get student assignments
+export async function getStudentAssignments(studentId: string): Promise<Assignment[]> {
+  const studentClassrooms = await getStudentClassrooms(studentId);
+  const studentAssignments: Assignment[] = [];
+  
+  for (const classroom of studentClassrooms) {
+    const classroomAssignments = await getClassroomAssignments(classroom.id, studentId);
+    studentAssignments.push(...classroomAssignments);
+  }
+  
+  return studentAssignments;
+}
+
+// Create the db object that your component expects
+export const db = {
+  // Student progress methods
+  getStudentProgress,
+  getStudentAnalytics,
+  getStudentAssignments,
+  
+  // Worksheet methods
+  saveWorksheet,
+  getUserWorksheets,
+  getWorksheetById,
+  deleteWorksheet,
+  
+  // Progress methods
+  saveStudentProgress,
+  getWorksheetProgress,
+  
+  // Classroom methods
+  createClassroom,
+  getTeacherClassrooms,
+  getStudentClassrooms,
+  joinClassroom,
+  
+  // Assignment methods
+  createAssignment,
+  getClassroomAssignments,
+  submitAssignment,
+  
+  // User role methods
+  getUserRole,
+  setUserRole,
+  isTeacher,
+  isStudent,
+  
+  // Analytics
+  getUserAnalytics
+};
