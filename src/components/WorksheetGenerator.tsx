@@ -1,15 +1,37 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Download, Eye, RefreshCw, Share, Star, Save } from "lucide-react";
-import { DifficultySelector, type DifficultyLevel } from "./DifficultySelector";
-import { PDFGenerator, type WorksheetData } from "@/lib/pdf-generator";
-import { saveWorksheet, type SavedWorksheet, type WorksheetQuestion, type DifficultySettings } from "@/lib/database";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { AIWorksheetGenerator, AIGeneratedWorksheet } from "@/lib/ai-generator";
+import { saveWorksheet, saveStudentProgress, StudentAnswer } from "@/lib/database";
+import { PDFGenerator } from "@/lib/pdf-generator";
+import { Topic, getGradeTopics } from "@/lib/topics";
+import { InteractiveWorksheet } from "./InteractiveWorksheet";
+import { Loader2, Download, Save, RefreshCw, Eye, EyeOff, FileText, Send, Clock, CheckCircle, AlertCircle, Star } from "lucide-react";
 
 interface WorksheetGeneratorProps {
   grade: string;
@@ -37,102 +59,118 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
   const [worksheet, setWorksheet] = useState<GeneratedWorksheet | null>(null);
   const [showAnswerKey, setShowAnswerKey] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [difficultyConfig, setDifficultyConfig] = useState({
-    level: 'medium' as DifficultyLevel,
-    questionsCount: 10,
+  const [activeTab, setActiveTab] = useState<string>("preview");
+  const [saveNotification, setSaveNotification] = useState<{show: boolean, message: string, type: 'success' | 'error'}>({show: false, message: '', type: 'success'});
+  const [difficultyConfig, setDifficultyConfig] = useState<{
+    level: 'easy' | 'medium' | 'hard';
+    questionsCount: number;
+    includeAnswerKey: boolean;
+    timeLimit: number;
+    showHints: boolean;
+    allowRetries: boolean;
+  }>({
+    level: 'medium',
+    questionsCount: 5,
     includeAnswerKey: true,
-    timeLimit: 30,
-    showHints: false,
-    allowRetries: true
+    timeLimit: 10, // Default 10 minutes time limit for interactive mode
+    showHints: true,
+    allowRetries: true,
   });
 
-  // Mock worksheet generation - replace with actual AI API integration
+  // AI-powered worksheet generation using Google AI Studio
   const generateWorksheet = async (): Promise<GeneratedWorksheet> => {
-    const worksheetTypes = {
-      grammar: "Grammar Practice",
-      vocabulary: "Vocabulary Builder",
-      readingComprehension: "Reading Comprehension"
-    };
+    try {
+      const worksheetTypes = {
+        grammar: "Grammar Practice",
+        vocabulary: "Vocabulary Builder",
+        readingComprehension: "Reading Comprehension"
+      };
 
-    const gradeLevel = grade === "K" ? "Kindergarten" : `Grade ${grade}`;
-
-    // Mock questions based on type
-    const mockQuestions = {
-      grammar: [
-        {
-          id: 1,
-          type: "multiple-choice" as const,
-          question: "Which word is a noun in this sentence: 'The cat ran quickly'?",
-          options: ["cat", "ran", "quickly", "the"],
-          answer: "cat"
-        },
-        {
-          id: 2,
-          type: "fill-blank" as const,
-          question: "Complete the sentence: The dog _____ in the park.",
-          answer: "played"
-        },
-        {
-          id: 3,
-          type: "short-answer" as const,
-          question: "Write a sentence using the word 'beautiful'.",
-          answer: "Sample: The beautiful flower bloomed in the garden."
-        }
-      ],
-      vocabulary: [
-        {
-          id: 1,
-          type: "multiple-choice" as const,
-          question: "What does the word 'enormous' mean?",
-          options: ["very small", "very large", "colorful", "fast"],
-          answer: "very large"
-        },
-        {
-          id: 2,
-          type: "fill-blank" as const,
-          question: "The _____ elephant walked slowly through the jungle.",
-          answer: "enormous"
-        },
-        {
-          id: 3,
-          type: "short-answer" as const,
-          question: "Use the word 'magnificent' in a sentence.",
-          answer: "Sample: The magnificent castle stood on the hill."
-        }
-      ],
-      readingComprehension: [
-        {
-          id: 1,
-          type: "multiple-choice" as const,
-          question: "What is the main idea of the passage?",
-          options: ["Animals in the forest", "The changing seasons", "Friendship", "Adventure"],
-          answer: "Friendship"
-        },
-        {
-          id: 2,
-          type: "short-answer" as const,
-          question: "How did the main character solve the problem?",
-          answer: "Sample: The character asked for help from friends."
-        },
-        {
-          id: 3,
-          type: "essay" as const,
-          question: "Explain why the story's ending was satisfying. Use examples from the text.",
-          answer: "Sample: Students should provide specific examples and personal reflection."
-        }
-      ]
-    };
-
-    return {
-      title: `${worksheetTypes[type as keyof typeof worksheetTypes]} - ${gradeLevel}`,
-      instructions: "Complete all questions to the best of your ability. Show your work where applicable.",
-      questions: mockQuestions[type as keyof typeof mockQuestions] || [],
-      answerKey: {
-        1: mockQuestions[type as keyof typeof mockQuestions]?.[0]?.answer || "",
-        2: mockQuestions[type as keyof typeof mockQuestions]?.[1]?.answer || "",
-        3: mockQuestions[type as keyof typeof mockQuestions]?.[2]?.answer || "",
+      const gradeLevel = grade === "K" ? "Kindergarten" : `Grade ${grade}`;
+      
+      // Get the topics data for the selected grade and type
+      const gradeTopics = getGradeTopics(grade);
+      if (!gradeTopics) {
+        throw new Error(`Topics not found for grade ${grade}`);
       }
-    };
+      
+      // Get the selected topics data
+      const topicsArray = gradeTopics[type as keyof typeof gradeTopics];
+      if (!Array.isArray(topicsArray)) {
+        throw new Error(`Invalid topics data for grade ${grade} and type ${type}`);
+      }
+      
+      const selectedTopics = topics.map(topicId => {
+        const topicData = topicsArray.find((t) => t.id === topicId);
+        if (!topicData) {
+          throw new Error(`Topic ${topicId} not found for grade ${grade} and type ${type}`);
+        }
+        return topicData;
+      });
+      
+      // Initialize the AI generator
+      const aiGenerator = new AIWorksheetGenerator();
+      
+      // Generate the worksheet using AI
+      const aiWorksheet = await aiGenerator.generateWorksheet({
+        grade,
+        type: type as 'grammar' | 'vocabulary' | 'readingComprehension',
+        topics: selectedTopics,
+        difficulty: difficultyConfig.level,
+        questionCount: difficultyConfig.questionsCount,
+        includeAnswerKey: difficultyConfig.includeAnswerKey,
+        showHints: difficultyConfig.showHints,
+        allowRetries: difficultyConfig.allowRetries
+      });
+      
+      // Convert to the expected format
+      const formattedQuestions = aiWorksheet.questions.map(q => ({
+        id: parseInt(q.id),
+        type: q.type as "multiple-choice" | "fill-blank" | "short-answer" | "essay",
+        question: q.question,
+        options: q.options,
+        answer: Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer
+      }));
+      
+      // Create answer key
+      const answerKey: Record<number, string> = {};
+      formattedQuestions.forEach(q => {
+        answerKey[q.id] = q.answer || '';
+      });
+      
+      return {
+        title: aiWorksheet.title,
+        instructions: aiWorksheet.instructions,
+        questions: formattedQuestions,
+        answerKey
+      };
+    } catch (error) {
+      console.error('Error generating worksheet with AI:', error);
+      
+      // Fallback to basic template if AI generation fails
+      const worksheetTypes = {
+        grammar: "Grammar Practice",
+        vocabulary: "Vocabulary Builder",
+        readingComprehension: "Reading Comprehension"
+      };
+
+      const gradeLevel = grade === "K" ? "Kindergarten" : `Grade ${grade}`;
+      
+      return {
+        title: `${worksheetTypes[type as keyof typeof worksheetTypes]} - ${gradeLevel}`,
+        instructions: "Complete all questions to the best of your ability. Show your work where applicable.",
+        questions: [
+          {
+            id: 1,
+            type: "multiple-choice" as const,
+            question: "Sample question (AI generation failed)",
+            options: ["Option A", "Option B", "Option C", "Option D"],
+            answer: "Option A"
+          }
+        ],
+        answerKey: { 1: "Option A" }
+      };
+    }
   };
 
   const handleGenerate = async () => {
@@ -153,7 +191,7 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
     if (!worksheet) return;
 
     try {
-      const worksheetData: WorksheetData = {
+      const worksheetData: any = {
         title: worksheet.title,
         grade,
         type: type as 'grammar' | 'vocabulary' | 'readingComprehension',
@@ -184,7 +222,7 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
     try {
       setIsSaving(true);
       
-      const worksheetQuestions: WorksheetQuestion[] = worksheet.questions.map(q => ({
+      const worksheetQuestions: any[] = worksheet.questions.map(q => ({
         id: q.id.toString(),
         type: q.type as 'multiple-choice' | 'fill-blank' | 'short-answer' | 'essay',
         question: q.question,
@@ -193,9 +231,9 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
         points: q.type === 'essay' ? 10 : q.type === 'short-answer' ? 5 : 2
       }));
       
-      const settings: DifficultySettings = {
+      const settings: any = {
         questionCount: difficultyConfig.questionsCount,
-        timeLimit: difficultyConfig.timeLimit,
+        timeLimit: difficultyConfig.timeLimit || 0, // Provide a default value of 0 if timeLimit is undefined
         showAnswerKey: difficultyConfig.includeAnswerKey,
         allowHints: difficultyConfig.showHints,
         allowRetries: difficultyConfig.allowRetries
@@ -212,10 +250,31 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
         settings
       });
 
-      alert('Worksheet saved successfully!');
+      // Show success notification
+      setSaveNotification({
+        show: true,
+        message: 'Worksheet saved successfully!',
+        type: 'success'
+      });
+      
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => {
+        setSaveNotification(prev => ({ ...prev, show: false }));
+      }, 5000);
     } catch (error) {
       console.error('Error saving worksheet:', error);
-      alert('Error saving worksheet. Please try again.');
+      
+      // Show error notification
+      setSaveNotification({
+        show: true,
+        message: 'Error saving worksheet. Please try again.',
+        type: 'error'
+      });
+      
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => {
+        setSaveNotification(prev => ({ ...prev, show: false }));
+      }, 5000);
     } finally {
       setIsSaving(false);
     }
@@ -225,13 +284,67 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
     setWorksheet(null);
     handleGenerate();
   };
+  
+  // Handle completion of interactive worksheet
+  const [completionStatus, setCompletionStatus] = useState<{
+    completed: boolean;
+    score: number | null;
+  }>({
+    completed: false,
+    score: null
+  });
+
+  const handleWorksheetComplete = (score: number, answers: StudentAnswer[]) => {
+    if (!userId || !worksheet) return;
+    
+    // Save student progress to database
+    saveStudentProgress({
+      userId,
+      worksheetId: `temp_${Date.now()}`,
+      score,
+      totalQuestions: worksheet.questions.length,
+      timeSpent: difficultyConfig.timeLimit || 0,
+      completedAt: new Date(),
+      answers
+    });
+    
+    // Update completion status
+    setCompletionStatus({
+      completed: true,
+      score: score
+    });
+    
+    // Show toast or notification
+    console.log(`Worksheet completed with score: ${score}%`);
+  };
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
+      {/* Side notification */}
+      {saveNotification.show && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-md shadow-lg flex items-center justify-between max-w-sm transition-all duration-300 ${saveNotification.type === 'success' ? 'bg-green-100 border border-green-300 text-green-800' : 'bg-red-100 border border-red-300 text-red-800'}`}>
+          <div className="flex items-center">
+            {saveNotification.type === 'success' ? (
+              <CheckCircle className="h-5 w-5 mr-2 text-green-600" />
+            ) : (
+              <AlertCircle className="h-5 w-5 mr-2 text-red-600" />
+            )}
+            <p>{saveNotification.message}</p>
+          </div>
+          <button 
+            onClick={() => setSaveNotification(prev => ({ ...prev, show: false }))}
+            className="ml-4 text-gray-500 hover:text-gray-700"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      )}
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto tech-card">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 glow-text">
-            <Star className="h-5 w-5" />
+            <FileText className="h-5 w-5" />
             Worksheet Generator
           </DialogTitle>
           <DialogDescription>
@@ -242,12 +355,143 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
         <div className="space-y-6">
           {/* Difficulty Configuration */}
           {!worksheet && (
-            <DifficultySelector
-              grade={grade}
-              type={type}
-              config={difficultyConfig}
-              onChange={setDifficultyConfig}
-            />
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="difficulty">Difficulty Level</Label>
+                  <Select
+                    value={difficultyConfig.level}
+                    onValueChange={(value: 'easy' | 'medium' | 'hard') => 
+                      setDifficultyConfig({
+                        ...difficultyConfig,
+                        level: value
+                      })
+                    }
+                  >
+                    <SelectTrigger id="difficulty">
+                      <SelectValue placeholder="Select difficulty" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="easy">Easy</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="hard">Hard</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="questions">Number of Questions</Label>
+                  <Select
+                    value={difficultyConfig.questionsCount.toString()}
+                    onValueChange={(value: string) => 
+                      setDifficultyConfig({
+                        ...difficultyConfig,
+                        questionsCount: parseInt(value)
+                      })
+                    }
+                  >
+                    <SelectTrigger id="questions">
+                      <SelectValue placeholder="Select count" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3">3 Questions</SelectItem>
+                      <SelectItem value="5">5 Questions</SelectItem>
+                      <SelectItem value="10">10 Questions</SelectItem>
+                      <SelectItem value="15">15 Questions</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="timeLimit">Time Limit (minutes)</Label>
+                  <Select
+                    value={difficultyConfig.timeLimit.toString()}
+                    onValueChange={(value: string) => 
+                      setDifficultyConfig({
+                        ...difficultyConfig,
+                        timeLimit: parseInt(value)
+                      })
+                    }
+                  >
+                    <SelectTrigger id="timeLimit">
+                      <SelectValue placeholder="Select time limit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">No Time Limit</SelectItem>
+                      <SelectItem value="5">5 Minutes</SelectItem>
+                      <SelectItem value="10">10 Minutes</SelectItem>
+                      <SelectItem value="15">15 Minutes</SelectItem>
+                      <SelectItem value="30">30 Minutes</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="answerKey" 
+                      checked={difficultyConfig.includeAnswerKey}
+                      onCheckedChange={(checked: boolean) => 
+                        setDifficultyConfig({
+                          ...difficultyConfig,
+                          includeAnswerKey: checked
+                        })
+                      }
+                    />
+                    <Label
+                      htmlFor="answerKey"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Include Answer Key
+                    </Label>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="showHints" 
+                      checked={difficultyConfig.showHints}
+                      onCheckedChange={(checked: boolean) => 
+                        setDifficultyConfig({
+                          ...difficultyConfig,
+                          showHints: checked
+                        })
+                      }
+                    />
+                    <Label
+                      htmlFor="showHints"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Show Hints
+                    </Label>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox 
+                      id="allowRetries" 
+                      checked={difficultyConfig.allowRetries}
+                      onCheckedChange={(checked: boolean) => 
+                        setDifficultyConfig({
+                          ...difficultyConfig,
+                          allowRetries: checked
+                        })
+                      }
+                    />
+                    <Label
+                      htmlFor="allowRetries"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Allow Retries
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </>
           )}
 
           {/* Generation Controls */}
@@ -260,154 +504,185 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
               ))}
             </div>
             <div className="flex gap-2">
-              {worksheet && (
-                <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAnswerKey(!showAnswerKey)}
-                    className="tech-border"
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    {showAnswerKey ? "Hide" : "Show"} Answers
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleRegenerate}
-                    className="tech-border"
-                  >
-                    <RefreshCw className="h-4 w-4 mr-1" />
-                    Regenerate
-                  </Button>
-                  {userId && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleSaveWorksheet}
-                      disabled={isSaving}
-                      className="tech-border"
-                    >
-                      <Save className="h-4 w-4 mr-1" />
-                      {isSaving ? "Saving..." : "Save"}
-                    </Button>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDownload}
-                    className="tech-border"
-                  >
-                    <Download className="h-4 w-4 mr-1" />
-                    Download PDF
-                  </Button>
-                </>
-              )}
+              {!worksheet ? (
+                <Button
+                  onClick={handleGenerate}
+                  disabled={isGenerating}
+                  className="tech-border"
+                >
+                  {isGenerating ? "Generating..." : "Generate Worksheet"}
+                </Button>
+              ) : null}
             </div>
           </div>
 
-          {/* Worksheet Content */}
-          {!worksheet ? (
-            <Card className="tech-card">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                {isGenerating ? (
-                  <>
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">Generating Your Worksheet</h3>
-                    <p className="text-muted-foreground text-center">
-                      Our AI is creating a custom worksheet based on your selections...
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <h3 className="text-lg font-semibold mb-2">Ready to Generate</h3>
-                    <p className="text-muted-foreground text-center mb-6">
-                      Click the button below to create your custom worksheet
-                    </p>
-                    <Button onClick={handleGenerate} size="lg" className="glow-border">
-                      <Star className="h-5 w-5 mr-2" />
-                      Generate Worksheet
-                    </Button>
-                  </>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="space-y-6">
-              {/* Worksheet Header */}
-              <Card className="tech-card">
+          {/* Worksheet Display */}
+          {worksheet && (
+            <div className="mt-6">
+              <Card className="tech-card mb-4">
                 <CardHeader>
-                  <CardTitle className="text-center text-2xl">{worksheet.title}</CardTitle>
-                  <CardDescription className="text-center">
-                    Name: ___________________ Date: ___________
-                  </CardDescription>
+                  <CardTitle>{worksheet.title}</CardTitle>
+                  <CardDescription>{worksheet.instructions}</CardDescription>
                 </CardHeader>
-                <CardContent>
-                  <p className="text-center font-medium">{worksheet.instructions}</p>
-                </CardContent>
               </Card>
+              
+              {/* Worksheet Display Tabs */}
+              <Tabs defaultValue="preview" className="w-full">
+                <TabsList className="mb-4 w-full">
+                  <TabsTrigger value="preview" className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Preview Mode
+                    </div>
+                  </TabsTrigger>
+                  <TabsTrigger value="interactive" className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <Send className="h-4 w-4" />
+                      Interactive Mode
+                    </div>
+                  </TabsTrigger>
+                </TabsList>
+                
+                {/* Action buttons */}
+                <div className="flex items-center gap-2 mb-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={() => setShowAnswerKey(!showAnswerKey)}
+                  >
+                    {showAnswerKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showAnswerKey ? "Hide Answers" : "Show Answers"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={handleRegenerate}
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                    Regenerate
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={handleSaveWorksheet}
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4" />
+                        Save Worksheet
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex items-center gap-1"
+                    onClick={handleDownload}
+                  >
+                    <Download className="h-4 w-4" />
+                    Download PDF
+                  </Button>
+                </div>
+                
+                {/* Preview Tab */}
+                <TabsContent value="preview" className="mt-4">
+                  {worksheet?.questions.map((question: any, index: number) => (
+                    <Card key={question.id} className="tech-card mb-4">
+                      <CardContent className="pt-6">
+                        <div className="space-y-4">
+                          <div className="flex items-start gap-3">
+                            <Badge variant="outline" className="shrink-0">
+                              {index + 1}
+                            </Badge>
+                            <div className="flex-1">
+                              <p className="font-medium mb-3">{question.question}</p>
 
-              {/* Questions */}
-              <div className="space-y-4">
-                {worksheet.questions.map((question, index) => (
-                  <Card key={question.id} className="tech-card">
-                    <CardContent className="pt-6">
-                      <div className="space-y-4">
-                        <div className="flex items-start gap-3">
-                          <Badge variant="outline" className="shrink-0">
-                            {index + 1}
-                          </Badge>
-                          <div className="flex-1">
-                            <p className="font-medium mb-3">{question.question}</p>
+                              {question.type === "multiple-choice" && question.options && (
+                                <div className="space-y-2">
+                                  {question.options.map((option: string, optIndex: number) => (
+                                    <div key={`${question.id}-${optIndex}`} className="flex items-center gap-2">
+                                      <div className="w-4 h-4 border border-border rounded-sm" />
+                                      <span>{String.fromCharCode(65 + optIndex)}. {option}</span>
+                                      {showAnswerKey && option === question.answer && (
+                                        <Badge variant="default" className="ml-2">Correct</Badge>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
 
-                            {question.type === "multiple-choice" && question.options && (
-                              <div className="space-y-2">
-                                {question.options.map((option, optIndex) => (
-                                  <div key={`${question.id}-${option}`} className="flex items-center gap-2">
-                                    <div className="w-4 h-4 border border-border rounded-sm" />
-                                    <span>{String.fromCharCode(65 + optIndex)}. {option}</span>
-                                    {showAnswerKey && option === question.answer && (
-                                      <Badge variant="default" className="ml-2">Correct</Badge>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
+                              {question.type === "fill-blank" && (
+                                <div className="border-b border-border w-48 h-8 inline-block" />
+                              )}
 
-                            {question.type === "fill-blank" && (
-                              <div className="border-b border-border w-48 h-8 inline-block" />
-                            )}
+                              {question.type === "short-answer" && (
+                                <div className="space-y-2">
+                                  <div className="border-b border-border h-8" />
+                                  <div className="border-b border-border h-8" />
+                                  <div className="border-b border-border h-8" />
+                                </div>
+                              )}
 
-                            {question.type === "short-answer" && (
-                              <div className="space-y-2">
-                                <div className="border-b border-border h-8" />
-                                <div className="border-b border-border h-8" />
-                                <div className="border-b border-border h-8" />
-                              </div>
-                            )}
+                              {question.type === "essay" && (
+                                <Textarea
+                                  placeholder="Write your answer here..."
+                                  className="min-h-[150px] tech-border"
+                                  disabled
+                                />
+                              )}
 
-                            {question.type === "essay" && (
-                              <Textarea
-                                placeholder="Write your answer here..."
-                                className="min-h-32 tech-border"
-                                disabled
-                              />
-                            )}
-
-                            {showAnswerKey && (
-                              <div className="mt-3 p-3 bg-primary/10 rounded-md">
-                                <p className="text-sm font-medium text-primary">
-                                  Answer: {question.answer}
-                                </p>
-                              </div>
-                            )}
+                              {showAnswerKey && question.answer && question.type !== "multiple-choice" && (
+                                <div className="mt-3 p-2 bg-muted/50 rounded-md">
+                                  <span className="font-semibold">Answer:</span> {question.answer}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </TabsContent>
+                
+                {/* Interactive Worksheet Tab */}
+                <TabsContent value="interactive" className="mt-4">
+                  <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-md">
+                    <h3 className="font-medium text-blue-700 mb-1">Interactive Worksheet Mode</h3>
+                    <p className="text-sm text-blue-600">
+                      Answer the questions directly on this page and submit your answers for AI-powered grading.
+                      {difficultyConfig.timeLimit > 0 && ` You have ${difficultyConfig.timeLimit} minutes to complete this worksheet.`}
+                    </p>
+                  </div>
+                  <InteractiveWorksheet
+                    userId={userId}
+                    worksheetId={`temp_${Date.now()}`}
+                    title={worksheet?.title || ""}
+                    instructions={worksheet?.instructions || ""}
+                    questions={worksheet?.questions.map((q: any) => ({
+                      id: q.id.toString(),
+                      type: q.type,
+                      question: q.question,
+                      options: q.options || [],
+                      correctAnswer: q.answer || '',
+                      points: q.type === 'essay' ? 10 : q.type === 'short-answer' ? 5 : 2
+                    }))}
+                    difficulty={difficultyConfig.level}
+                    timeLimit={difficultyConfig.timeLimit}
+                    showHints={difficultyConfig.showHints}
+                    allowRetries={difficultyConfig.allowRetries}
+                    onComplete={handleWorksheetComplete}
+                  />
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-// Mock database for saved worksheets, student progress, and classroom management
+// Database interfaces for saved worksheets and student progress
 // In a real app, this would be replaced with a proper database like PostgreSQL, MongoDB, etc.
 
 export interface SavedWorksheet {
@@ -51,54 +51,18 @@ export interface StudentAnswer {
   timeSpent: number;
 }
 
-export interface Classroom {
-  id: string;
-  teacherId: string;
-  name: string;
-  description: string;
-  code: string; // Unique classroom code for students to join
-  studentIds: string[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export interface Assignment {
-  id: string;
-  classroomId: string;
-  teacherId: string;
-  worksheetId: string;
-  title: string;
-  description: string;
-  dueDate: Date;
-  assignedStudents: string[];
-  submissions: AssignmentSubmission[];
-  createdAt: Date;
-}
-
-export interface AssignmentSubmission {
-  studentId: string;
-  progressId: string;
-  submittedAt: Date;
-  status: 'submitted' | 'graded';
-  grade?: number;
-  feedback?: string;
-}
+// Student-only application no longer needs classroom interface
 
 export interface UserRole {
   userId: string;
-  role: 'student' | 'teacher' | 'admin';
-  metadata?: {
-    gradeLevel?: string;
-    subject?: string;
-    school?: string;
-  };
+  role: 'student';
+  metadata?: Record<string, any>;
 }
 
-// Mock data storage (in memory)
+// Empty data storage (in memory)
 const savedWorksheets: SavedWorksheet[] = [];
 const studentProgress: StudentProgress[] = [];
-const classrooms: Classroom[] = [];
-const assignments: Assignment[] = [];
+// Student-only application no longer needs classrooms array
 const userRoles: UserRole[] = [];
 
 // User Role Management
@@ -106,26 +70,20 @@ export async function getUserRole(userId: string): Promise<UserRole | null> {
   return userRoles.find(role => role.userId === userId) || null;
 }
 
-export async function setUserRole(userId: string, role: 'student' | 'teacher' | 'admin', metadata?: UserRole['metadata']): Promise<UserRole> {
+export async function setUserRole(userId: string, role: 'student' = 'student', metadata?: UserRole['metadata']): Promise<UserRole> {
+  // In student-only app, role parameter is ignored and always set to 'student'
   const existingRole = userRoles.find(r => r.userId === userId);
   if (existingRole) {
-    existingRole.role = role;
     existingRole.metadata = metadata;
     return existingRole;
   }
-  const newRole: UserRole = { userId, role, metadata };
+  const newRole: UserRole = { userId, role: 'student', metadata };
   userRoles.push(newRole);
   return newRole;
 }
 
-export async function isTeacher(userId: string): Promise<boolean> {
-  const role = await getUserRole(userId);
-  return role?.role === 'teacher' || role?.role === 'admin';
-}
-
 export async function isStudent(userId: string): Promise<boolean> {
-  const role = await getUserRole(userId);
-  return role?.role === 'student';
+  return true; // All users are students in this application
 }
 
 // Worksheet Management
@@ -151,7 +109,7 @@ export async function getWorksheetById(id: string, userId: string): Promise<Save
   
   // Check if user has access to this worksheet
   const userRole = await getUserRole(userId);
-  if (worksheet.userId === userId || userRole?.role === 'teacher' || userRole?.role === 'admin') {
+  if (worksheet.userId === userId) {
     return worksheet;
   }
   
@@ -182,111 +140,12 @@ export async function getStudentProgress(userId: string): Promise<StudentProgres
 }
 
 export async function getWorksheetProgress(worksheetId: string, userId: string): Promise<StudentProgress[]> {
-  const userRole = await getUserRole(userId);
-  
-  if (userRole?.role === 'teacher' || userRole?.role === 'admin') {
-    // Teachers can see all progress for their worksheets
-    return studentProgress.filter(progress => progress.worksheetId === worksheetId);
-  }
-  // Students can only see their own progress
   return studentProgress.filter(progress => 
     progress.worksheetId === worksheetId && progress.userId === userId
   );
 }
 
-// Classroom Management (Teacher Features)
-export async function createClassroom(teacherId: string, name: string, description: string): Promise<Classroom | null> {
-  if (!(await isTeacher(teacherId))) return null;
-  
-  const newClassroom: Classroom = {
-    id: `classroom_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    teacherId,
-    name,
-    description,
-    code: Math.random().toString(36).substr(2, 8).toUpperCase(),
-    studentIds: [],
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  };
-  
-  classrooms.push(newClassroom);
-  return newClassroom;
-}
-
-export async function getTeacherClassrooms(teacherId: string): Promise<Classroom[]> {
-  if (!(await isTeacher(teacherId))) return [];
-  return classrooms.filter(classroom => classroom.teacherId === teacherId);
-}
-
-export async function getStudentClassrooms(studentId: string): Promise<Classroom[]> {
-  return classrooms.filter(classroom => classroom.studentIds.includes(studentId));
-}
-
-export async function joinClassroom(studentId: string, classroomCode: string): Promise<boolean> {
-  const classroom = classrooms.find(c => c.code === classroomCode);
-  if (!classroom) return false;
-  
-  if (!classroom.studentIds.includes(studentId)) {
-    classroom.studentIds.push(studentId);
-    classroom.updatedAt = new Date();
-  }
-  
-  return true;
-}
-
-// Assignment Management (Teacher Features)
-export async function createAssignment(assignment: Omit<Assignment, 'id' | 'createdAt' | 'submissions'>): Promise<Assignment | null> {
-  if (!(await isTeacher(assignment.teacherId))) return null;
-  
-  const newAssignment: Assignment = {
-    ...assignment,
-    id: `assignment_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    submissions: [],
-    createdAt: new Date(),
-  };
-  
-  assignments.push(newAssignment);
-  return newAssignment;
-}
-
-export async function getClassroomAssignments(classroomId: string, userId: string): Promise<Assignment[]> {
-  const userRole = await getUserRole(userId);
-  const classroom = classrooms.find(c => c.id === classroomId);
-  
-  if (!classroom) return [];
-  
-  // Check if user has access to this classroom
-  if (classroom.teacherId === userId || 
-      classroom.studentIds.includes(userId) ||
-      userRole?.role === 'admin') {
-    return assignments.filter(assignment => assignment.classroomId === classroomId);
-  }
-  
-  return [];
-}
-
-export async function submitAssignment(assignmentId: string, studentId: string, progressId: string): Promise<boolean> {
-  const assignment = assignments.find(a => a.id === assignmentId);
-  if (!assignment) return false;
-  
-  const existingSubmission = assignment.submissions.find(s => s.studentId === studentId);
-  if (existingSubmission) {
-    // Update existing submission
-    existingSubmission.progressId = progressId;
-    existingSubmission.submittedAt = new Date();
-    existingSubmission.status = 'submitted';
-  } else {
-    // Create new submission
-    assignment.submissions.push({
-      studentId,
-      progressId,
-      submittedAt: new Date(),
-      status: 'submitted',
-    });
-  }
-  
-  return true;
-}
+// Classroom Management functions removed - student-only application
 
 // Analytics and Reporting
 export interface AnalyticsData {
@@ -337,7 +196,178 @@ export async function getUserAnalytics(userId: string): Promise<AnalyticsData> {
     recentActivity: userProgress.slice(-10), // Last 10 activities
   };
 }
-// Add this to the end of your src/lib/database.ts file
+
+// Student Analytics Interface
+export interface StudentAnalytics {
+  totalWorksheets: number;
+  averageScore: number;
+  totalTimeSpent: number;
+  progressByType: Record<string, { completed: number; averageScore: number }>;
+  progressByGrade: Record<string, { completed: number; averageScore: number }>;
+  studyStreak: {
+    current: number;
+    best: number;
+    lastStudyDate: Date | null;
+  };
+}
+
+// Create analytics function for students with improved streak tracking
+export async function getStudentAnalytics(studentId: string): Promise<StudentAnalytics> {
+  const progress = studentProgress.filter(p => p.userId === studentId);
+  const worksheets = savedWorksheets.filter(w => w.userId === studentId);
+  
+  // Calculate total time spent
+  const totalTimeSpent = progress.reduce((total, p) => total + p.timeSpent, 0);
+  
+  // Calculate average score
+  const averageScore = progress.length > 0
+    ? progress.reduce((sum, p) => sum + p.score, 0) / progress.length
+    : 0;
+  
+  // Group progress by worksheet type
+  const progressByType: Record<string, { completed: number; averageScore: number }> = {};
+  const progressByGrade: Record<string, { completed: number; averageScore: number }> = {};
+  
+  // Initialize with zero values for all types and grades
+  const types = ['grammar', 'vocabulary', 'readingComprehension'];
+  const grades = ['K', '1', '2', '3', '4', '5', '6', '7', '8'];
+  
+  types.forEach(type => {
+    progressByType[type] = { completed: 0, averageScore: 0 };
+  });
+  
+  grades.forEach(grade => {
+    progressByGrade[grade] = { completed: 0, averageScore: 0 };
+  });
+  
+  // Process each progress entry
+  for (const p of progress) {
+    const worksheet = savedWorksheets.find(w => w.id === p.worksheetId);
+    if (worksheet) {
+      const type = worksheet.type;
+      const grade = worksheet.grade;
+      
+      // Update type statistics
+      progressByType[type].completed += 1;
+      progressByType[type].averageScore = (
+        (progressByType[type].averageScore * (progressByType[type].completed - 1)) + p.score
+      ) / progressByType[type].completed;
+      
+      // Update grade statistics
+      progressByGrade[grade].completed += 1;
+      progressByGrade[grade].averageScore = (
+        (progressByGrade[grade].averageScore * (progressByGrade[grade].completed - 1)) + p.score
+      ) / progressByGrade[grade].completed;
+    }
+  }
+  
+  // Calculate study streak
+  const sortedProgress = [...progress].sort((a, b) => 
+    new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+  );
+  
+  const studyStreak = calculateStudyStreak(sortedProgress);
+  
+  return {
+    totalWorksheets: worksheets.length,
+    averageScore,
+    totalTimeSpent,
+    progressByType,
+    progressByGrade,
+    studyStreak
+  };
+}
+
+// Helper function to calculate study streak
+function calculateStudyStreak(progress: StudentProgress[]): { current: number; best: number; lastStudyDate: Date | null } {
+  if (progress.length === 0) {
+    return { current: 0, best: 0, lastStudyDate: null };
+  }
+  
+  // Sort progress by completion date (newest first)
+  const sortedDates = progress.map(p => new Date(p.completedAt))
+    .sort((a, b) => b.getTime() - a.getTime());
+  
+  const lastStudyDate = sortedDates[0];
+  const today = new Date();
+  
+  // Check if the last study date is today or yesterday
+  const isToday = isSameDay(lastStudyDate, today);
+  const isYesterday = isSameDay(lastStudyDate, new Date(today.setDate(today.getDate() - 1)));
+  
+  // If the last study wasn't today or yesterday, streak is broken
+  if (!isToday && !isYesterday) {
+    return { 
+      current: 0, 
+      best: calculateBestStreak(sortedDates),
+      lastStudyDate 
+    };
+  }
+  
+  // Calculate current streak
+  let currentStreak = 1; // Start with 1 for the most recent day
+  let previousDate = lastStudyDate;
+  
+  for (let i = 1; i < sortedDates.length; i++) {
+    const currentDate = sortedDates[i];
+    
+    // Check if this date is the previous day from our last counted date
+    const expectedPreviousDay = new Date(previousDate);
+    expectedPreviousDay.setDate(expectedPreviousDay.getDate() - 1);
+    
+    if (isSameDay(currentDate, expectedPreviousDay)) {
+      currentStreak++;
+      previousDate = currentDate;
+    } else {
+      // Streak is broken
+      break;
+    }
+  }
+  
+  const bestStreak = Math.max(currentStreak, calculateBestStreak(sortedDates));
+  
+  return {
+    current: currentStreak,
+    best: bestStreak,
+    lastStudyDate
+  };
+}
+
+// Helper function to calculate the best streak
+function calculateBestStreak(dates: Date[]): number {
+  if (dates.length === 0) return 0;
+  
+  let bestStreak = 1;
+  let currentStreak = 1;
+  
+  for (let i = 1; i < dates.length; i++) {
+    const currentDate = dates[i];
+    const previousDate = dates[i - 1];
+    
+    // Check if this date is the previous day from our last counted date
+    const expectedPreviousDay = new Date(previousDate);
+    expectedPreviousDay.setDate(expectedPreviousDay.getDate() - 1);
+    
+    if (isSameDay(currentDate, expectedPreviousDay)) {
+      currentStreak++;
+      bestStreak = Math.max(bestStreak, currentStreak);
+    } else {
+      // Streak is broken
+      currentStreak = 1;
+    }
+  }
+  
+  return bestStreak;
+}
+
+// Helper function to check if two dates are the same day
+function isSameDay(date1: Date, date2: Date): boolean {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
 
 // Helper function to format time
 export function formatTimeSpent(seconds: number): string {
@@ -350,92 +380,12 @@ export function formatTimeSpent(seconds: number): string {
   return `${minutes}m`;
 }
 
-// Student Analytics Interface (add this interface)
-export interface StudentAnalytics {
-  totalWorksheets: number;
-  averageScore: number;
-  totalTimeSpent: number;
-  progressByType: Record<string, { completed: number; averageScore: number }>;
-  progressByGrade: Record<string, { completed: number; averageScore: number }>;
-}
-
-// Create analytics function for students
-export async function getStudentAnalytics(studentId: string): Promise<StudentAnalytics> {
-  const progress = await getStudentProgress(studentId);
-  const userWorksheets = await getUserWorksheets(studentId);
-  
-  const totalWorksheets = progress.length;
-  const averageScore = totalWorksheets > 0 
-    ? progress.reduce((sum, p) => sum + (p.score / p.totalQuestions * 100), 0) / totalWorksheets
-    : 0;
-  const totalTimeSpent = progress.reduce((sum, p) => sum + p.timeSpent, 0);
-  
-  // Group by worksheet type
-  const progressByType: Record<string, { completed: number; averageScore: number }> = {};
-  const progressByGrade: Record<string, { completed: number; averageScore: number }> = {};
-  
-  for (const prog of progress) {
-    const worksheet = userWorksheets.find(w => w.id === prog.worksheetId);
-    if (worksheet) {
-      // By type
-      const type = worksheet.type;
-      if (!progressByType[type]) {
-        progressByType[type] = { completed: 0, averageScore: 0 };
-      }
-      progressByType[type].completed++;
-      progressByType[type].averageScore += prog.score / prog.totalQuestions * 100;
-      
-      // By grade
-      const grade = worksheet.grade;
-      if (!progressByGrade[grade]) {
-        progressByGrade[grade] = { completed: 0, averageScore: 0 };
-      }
-      progressByGrade[grade].completed++;
-      progressByGrade[grade].averageScore += prog.score / prog.totalQuestions * 100;
-    }
-  }
-  
-  // Calculate averages
-  Object.values(progressByType).forEach(data => {
-    if (data.completed > 0) {
-      data.averageScore = data.averageScore / data.completed;
-    }
-  });
-  
-  Object.values(progressByGrade).forEach(data => {
-    if (data.completed > 0) {
-      data.averageScore = data.averageScore / data.completed;
-    }
-  });
-  
-  return {
-    totalWorksheets,
-    averageScore,
-    totalTimeSpent,
-    progressByType,
-    progressByGrade
-  };
-}
-
-// Get student assignments
-export async function getStudentAssignments(studentId: string): Promise<Assignment[]> {
-  const studentClassrooms = await getStudentClassrooms(studentId);
-  const studentAssignments: Assignment[] = [];
-  
-  for (const classroom of studentClassrooms) {
-    const classroomAssignments = await getClassroomAssignments(classroom.id, studentId);
-    studentAssignments.push(...classroomAssignments);
-  }
-  
-  return studentAssignments;
-}
-
-// Create the db object that your component expects
+  // Create the db object that your component expects
 export const db = {
   // Student progress methods
   getStudentProgress,
-  getStudentAnalytics,
-  getStudentAssignments,
+  saveStudentProgress,
+  getWorksheetProgress,
   
   // Worksheet methods
   saveWorksheet,
@@ -443,27 +393,15 @@ export const db = {
   getWorksheetById,
   deleteWorksheet,
   
-  // Progress methods
-  saveStudentProgress,
-  getWorksheetProgress,
-  
-  // Classroom methods
-  createClassroom,
-  getTeacherClassrooms,
-  getStudentClassrooms,
-  joinClassroom,
-  
-  // Assignment methods
-  createAssignment,
-  getClassroomAssignments,
-  submitAssignment,
-  
   // User role methods
   getUserRole,
   setUserRole,
-  isTeacher,
   isStudent,
   
-  // Analytics
-  getUserAnalytics
+  // Analytics methods
+  getUserAnalytics,
+  getStudentAnalytics,
+  
+  // Helper methods
+  formatTimeSpent
 };

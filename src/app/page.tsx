@@ -10,10 +10,10 @@ import { getAllGrades, getGradeTopics, type Topic } from "@/lib/topics";
 import { BookOpen, Brain, FileText, Sparkles, Target, Zap } from "lucide-react";
 import { WorksheetGenerator } from "@/components/WorksheetGenerator";
 import { AuthButton } from "@/components/AuthButton";
-import { RoleSelector } from "@/components/RoleSelector";
+// RoleSelector removed as we're making this a student-only application
 import { UserDashboard } from "@/components/UserDashboard";
 import { useUser } from "@clerk/nextjs";
-import { getUserRole } from "@/lib/database";
+import { getUserRole, setUserRole as setUserRoleInDB } from "@/lib/database";
 import { useEffect } from "react";
 
 export default function HomePage() {
@@ -23,31 +23,24 @@ export default function HomePage() {
   const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [showGenerator, setShowGenerator] = useState(false);
-  const [userRole, setUserRole] = useState<{ role: 'student' | 'teacher' | 'admin' } | null>(null);
-  const [showRoleSelector, setShowRoleSelector] = useState(false);
+  const [userRole, setUserRole] = useState<{ role: 'student'; userId: string } | null>(null);
   const [showDashboard, setShowDashboard] = useState(false);
 
   const grades = getAllGrades();
   const gradeTopics = selectedGrade ? getGradeTopics(selectedGrade) : null;
 
-  // Check user role when signed in
+  // Set user role to student when signed in
   useEffect(() => {
     if (isSignedIn && user?.id) {
-      getUserRole(user.id).then(role => {
-        if (role) {
-          setUserRole(role);
-        } else {
-          // New user, show role selector
-          setShowRoleSelector(true);
-        }
-      });
+      // Always set role to student
+      setUserRole({ role: 'student', userId: user.id });
+      
+      // Always ensure the role is set in the database
+      setUserRoleInDB(user.id, 'student')
+        .then(() => console.log('User role set to student'))
+        .catch((err: Error) => console.error('Error setting user role:', err));
     }
   }, [isSignedIn, user?.id]);
-
-  const handleRoleSelected = (role: 'student' | 'teacher') => {
-    setUserRole({ role });
-    setShowRoleSelector(false);
-  };
 
   const worksheetTypes = [
     {
@@ -106,12 +99,7 @@ export default function HomePage() {
     }
   };
 
-  // Show role selector for new users
-  if (isSignedIn && showRoleSelector && user?.id) {
-    return <RoleSelector userId={user.id} onRoleSelected={handleRoleSelected} />;
-  }
-
-  // Show dashboard if user has selected role and wants to view dashboard
+  // Show dashboard if user is signed in and wants to view dashboard
   if (isSignedIn && userRole && showDashboard && user?.id) {
     return <UserDashboard userId={user.id} userRole={userRole} />;
   }

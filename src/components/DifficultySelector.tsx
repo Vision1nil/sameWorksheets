@@ -9,7 +9,7 @@ import { Brain, Target, Zap, Settings } from "lucide-react";
 
 export type DifficultyLevel = 'easy' | 'medium' | 'hard';
 
-interface DifficultyConfig {
+export interface DifficultyConfig {
   level: DifficultyLevel;
   questionsCount: number;
   includeAnswerKey: boolean;

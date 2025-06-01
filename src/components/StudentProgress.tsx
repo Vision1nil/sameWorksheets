@@ -18,11 +18,11 @@ import {
   CheckCircle,
   Circle
 } from "lucide-react";
-import { db, type StudentProgress as StudentProgressType, type Assignment, formatTimeSpent } from "@/lib/database";
+import { db, type StudentProgress as StudentProgressType, formatTimeSpent } from "@/lib/database";
 
 interface StudentProgressProps {
-  studentId: string;
-  studentName: string;
+  userId: string;
+  studentName?: string;
 }
 
 interface ProgressStats {
@@ -31,30 +31,31 @@ interface ProgressStats {
   totalTimeSpent: number;
   progressByType: Record<string, { completed: number; averageScore: number }>;
   progressByGrade: Record<string, { completed: number; averageScore: number }>;
+  studyStreak?: {
+    current: number;
+    best: number;
+  };
 }
 
-export function StudentProgress({ studentId, studentName }: StudentProgressProps) {
+export function StudentProgress({ userId, studentName = 'Student' }: StudentProgressProps) {
   const [progress, setProgress] = useState<StudentProgressType[]>([]);
   const [stats, setStats] = useState<ProgressStats | null>(null);
-  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     loadStudentData();
-  }, [studentId]);
+  }, [userId]);
 
   const loadStudentData = async () => {
     try {
       setLoading(true);
-      const [progressData, statsData, assignmentsData] = await Promise.all([
-        db.getStudentProgress(studentId),
-        db.getStudentAnalytics(studentId),
-        db.getStudentAssignments(studentId)
+      const [progressData, statsData] = await Promise.all([
+        db.getStudentProgress(userId),
+        db.getStudentAnalytics(userId)
       ]);
 
       setProgress(progressData);
       setStats(statsData);
-      setAssignments(assignmentsData);
     } catch (error) {
       console.error('Error loading student data:', error);
     } finally {
@@ -85,24 +86,46 @@ export function StudentProgress({ studentId, studentName }: StudentProgressProps
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background grid-pattern flex items-center justify-center">
+      <div className="flex items-center justify-center p-8">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4" />
-          <p className="text-muted-foreground">Loading progress data...</p>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2" />
+          <p className="text-muted-foreground text-sm">Loading progress data...</p>
         </div>
       </div>
     );
   }
+  
+  // Empty state when no progress data is available
+  if (progress.length === 0) {
+    return (
+      <Card className="tech-card">
+        <CardContent className="p-6 flex flex-col items-center justify-center text-center">
+          <BookOpen className="h-12 w-12 text-primary/50 mb-4" />
+          <h3 className="text-xl font-medium mb-2">No Progress Data Yet</h3>
+          <p className="text-muted-foreground mb-4 max-w-md">
+            Complete worksheets to start tracking your progress and see detailed analytics here.
+          </p>
+          <Button 
+            variant="outline" 
+            className="bg-blue-600/20 border-blue-500/30 text-blue-300 hover:bg-blue-600/30"
+            onClick={() => window.location.href = '/'}
+          >
+            Start Learning
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-background grid-pattern">
+    <div>
       {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm mb-6">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold glow-text">Student Progress</h1>
-              <p className="text-muted-foreground">{studentName}'s Learning Journey</p>
+              <h1 className="text-xl font-bold glow-text">Your Progress</h1>
+              <p className="text-muted-foreground text-sm">Learning Journey</p>
             </div>
             <Badge variant="secondary" className="tech-border">
               <TrendingUp className="h-3 w-3 mr-1" />
@@ -112,13 +135,17 @@ export function StudentProgress({ studentId, studentName }: StudentProgressProps
         </div>
       </header>
 
-      <main className="container mx-auto px-6 py-8">
+      <main className="px-6 py-4">
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 tech-border">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="assignments">Assignments</TabsTrigger>
-            <TabsTrigger value="achievements">Achievements</TabsTrigger>
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="overview" className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Overview
+            </TabsTrigger>
+            <TabsTrigger value="achievements" className="flex items-center gap-2">
+              <Trophy className="h-4 w-4" />
+              Achievements
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
@@ -169,10 +196,10 @@ export function StudentProgress({ studentId, studentName }: StudentProgressProps
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-2xl font-bold">{assignments.length}</p>
-                      <p className="text-sm text-muted-foreground">Active Tasks</p>
+                      <p className="text-2xl font-bold">{stats?.studyStreak?.current || 0}</p>
+                      <p className="text-sm text-muted-foreground">Day Streak</p>
                     </div>
-                    <Calendar className="h-8 w-8 text-primary" />
+                    <Award className="h-8 w-8 text-primary" />
                   </div>
                 </CardContent>
               </Card>
@@ -260,59 +287,7 @@ export function StudentProgress({ studentId, studentName }: StudentProgressProps
             </div>
           </TabsContent>
 
-          {/* Assignments Tab */}
-          <TabsContent value="assignments" className="space-y-6">
-            <Card className="tech-card">
-              <CardHeader>
-                <CardTitle>Active Assignments</CardTitle>
-                <CardDescription>Worksheets assigned by your teachers</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {assignments.map(assignment => {
-                    const isOverdue = assignment.dueDate && new Date() > assignment.dueDate;
-                    const isCompleted = progress.some(p => p.worksheetId === assignment.worksheetId);
 
-                    return (
-                      <div key={assignment.id} className="flex items-center justify-between p-4 rounded-lg bg-secondary/50 tech-hover">
-                        <div className="flex items-center gap-4">
-                          <div className={`p-2 rounded-lg ${isCompleted ? 'bg-green-500/10' : isOverdue ? 'bg-red-500/10' : 'bg-yellow-500/10'}`}>
-                            {isCompleted ? (
-                              <CheckCircle className="h-5 w-5 text-green-500" />
-                            ) : (
-                              <Circle className="h-5 w-5 text-muted-foreground" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="font-medium">{assignment.title}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {assignment.description}
-                            </p>
-                            {assignment.dueDate && (
-                              <p className={`text-xs ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`}>
-                                Due: {assignment.dueDate.toLocaleDateString()}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {isCompleted && (
-                            <Badge variant="default">Completed</Badge>
-                          )}
-                          {isOverdue && !isCompleted && (
-                            <Badge variant="destructive">Overdue</Badge>
-                          )}
-                          <Button size="sm" variant="outline">
-                            {isCompleted ? 'Review' : 'Start'}
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
           {/* Achievements Tab */}
           <TabsContent value="achievements" className="space-y-6">

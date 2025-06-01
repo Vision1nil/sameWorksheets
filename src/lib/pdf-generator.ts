@@ -183,7 +183,7 @@ export class PDFGenerator {
     questions.forEach((question, index) => {
       this.checkPageBreak(10);
 
-      const answerText = `${index + 1}. ${question.answer || 'Sample answer provided in teacher notes'}`;
+      const answerText = `${index + 1}. ${question.answer || 'Sample answer'}`;
       const splitAnswer = this.pdf.splitTextToSize(answerText, this.pageWidth - 2 * this.margin);
       this.pdf.text(splitAnswer, this.margin, this.currentY);
       this.currentY += splitAnswer.length * 5 + 3;
