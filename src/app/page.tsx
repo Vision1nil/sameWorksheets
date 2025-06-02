@@ -1,339 +1,242 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getAllGrades, getGradeTopics, type Topic } from "@/lib/topics";
-import { BookOpen, Brain, FileText, Sparkles, Target, Zap } from "lucide-react";
-import { WorksheetGenerator } from "@/components/WorksheetGenerator";
-import { AuthButton } from "@/components/AuthButton";
-// RoleSelector removed as we're making this a student-only application
-import { UserDashboard } from "@/components/UserDashboard";
-import { useUser } from "@clerk/nextjs";
-import { getUserRole, setUserRole as setUserRoleInDB } from "@/lib/database";
 import { useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
+import { setUserRole as setUserRoleInDB } from "@/lib/database";
+import { FileText, Sparkles, Target, Zap, BarChart3, Clock, BookOpen, Brain, ArrowRight } from "lucide-react";
+import Link from "next/link";
+import Image from "next/image";
 
 export default function HomePage() {
   const { user, isSignedIn } = useUser();
-  const [selectedGrade, setSelectedGrade] = useState<string>("");
-  const [selectedType, setSelectedType] = useState<string>("");
-  const [selectedTopics, setSelectedTopics] = useState<string[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [showGenerator, setShowGenerator] = useState(false);
-  const [userRole, setUserRole] = useState<{ role: 'student'; userId: string } | null>(null);
-  const [showDashboard, setShowDashboard] = useState(false);
-
-  const grades = getAllGrades();
-  const gradeTopics = selectedGrade ? getGradeTopics(selectedGrade) : null;
-
+  const router = useRouter();
+  
   // Set user role to student when signed in
   useEffect(() => {
     if (isSignedIn && user?.id) {
       // Always set role to student
-      setUserRole({ role: 'student', userId: user.id });
-      
-      // Always ensure the role is set in the database
       setUserRoleInDB(user.id, 'student')
         .then(() => console.log('User role set to student'))
         .catch((err: Error) => console.error('Error setting user role:', err));
     }
   }, [isSignedIn, user?.id]);
 
-  const worksheetTypes = [
+  const handleGetStarted = () => {
+    if (isSignedIn) {
+      router.push('/generate');
+    } else {
+      router.push('/sign-in');
+    }
+  };
+
+  const features = [
     {
-      id: "grammar",
-      title: "Grammar",
-      description: "Sentence structure, parts of speech, and language mechanics",
-      icon: <FileText className="h-6 w-6" />,
-      color: "from-blue-500 to-cyan-500"
+      title: "Create Custom Worksheets",
+      description: "Generate personalized English worksheets tailored to your learning needs",
+      icon: <FileText className="h-10 w-10" />,
+      color: "from-blue-500 to-cyan-400"
     },
     {
-      id: "vocabulary",
-      title: "Vocabulary",
-      description: "Word meanings, etymology, and language expansion",
-      icon: <Brain className="h-6 w-6" />,
-      color: "from-purple-500 to-pink-500"
+      title: "Track Your Progress",
+      description: "Monitor your learning journey with detailed analytics and performance tracking",
+      icon: <BarChart3 className="h-10 w-10" />,
+      color: "from-purple-500 to-pink-400"
     },
     {
-      id: "readingComprehension",
-      title: "Reading Comprehension",
-      description: "Text analysis, critical thinking, and interpretation",
-      icon: <BookOpen className="h-6 w-6" />,
-      color: "from-green-500 to-emerald-500"
+      title: "Practice Anytime",
+      description: "Access your saved worksheets and practice at your own pace",
+      icon: <Clock className="h-10 w-10" />,
+      color: "from-amber-500 to-orange-400"
+    },
+    {
+      title: "Instant Feedback",
+      description: "Get immediate results and identify areas for improvement",
+      icon: <Zap className="h-10 w-10" />,
+      color: "from-green-500 to-emerald-400"
+    }
+  ];
+  
+  const howItWorks = [
+    {
+      step: 1,
+      title: "Select Your Topics",
+      description: "Choose from a variety of English topics including grammar, vocabulary, and reading comprehension."
+    },
+    {
+      step: 2,
+      title: "Generate Worksheet",
+      description: "Our AI creates a custom worksheet based on your selected topics and difficulty level."
+    },
+    {
+      step: 3,
+      title: "Practice & Learn",
+      description: "Complete the worksheet online or download as PDF to practice offline."
+    },
+    {
+      step: 4,
+      title: "Track Progress",
+      description: "Review your performance and see your improvement over time."
+    }
+  ];
+  
+  const testimonials = [
+    {
+      quote: "This tool has helped me improve my English skills significantly in just a few weeks!",
+      author: "Alex, 10th Grade"
+    },
+    {
+      quote: "The personalized worksheets are exactly what I needed to practice for my exams.",
+      author: "Jamie, 8th Grade"
+    },
+    {
+      quote: "I love how I can track my progress and see where I need to improve.",
+      author: "Taylor, 11th Grade"
     }
   ];
 
-  const handleTopicToggle = (topicId: string) => {
-    setSelectedTopics(prev =>
-      prev.includes(topicId)
-        ? prev.filter(id => id !== topicId)
-        : [...prev, topicId]
-    );
-  };
-
-  const handleGenerateWorksheet = async () => {
-    if (!selectedGrade || !selectedType || selectedTopics.length === 0) return;
-    if (!isSignedIn) {
-      // Optionally show a message or redirect to sign in
-      alert("Please sign in to generate worksheets");
-      return;
-    }
-    setShowGenerator(true);
-  };
-
-  const getCurrentTopics = (): Topic[] => {
-    if (!gradeTopics || !selectedType) return [];
-
-    switch (selectedType) {
-      case "grammar":
-        return gradeTopics.grammar;
-      case "vocabulary":
-        return gradeTopics.vocabulary;
-      case "readingComprehension":
-        return gradeTopics.readingComprehension;
-      default:
-        return [];
-    }
-  };
-
-  // Show dashboard if user is signed in and wants to view dashboard
-  if (isSignedIn && userRole && showDashboard && user?.id) {
-    return <UserDashboard userId={user.id} userRole={userRole} />;
-  }
-
   return (
-    <div className="min-h-screen bg-background grid-pattern">
-      {/* Header */}
-      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 rounded-lg bg-primary text-primary-foreground">
-                <Sparkles className="h-6 w-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold glow-text">EduSheet AI</h1>
-                <p className="text-sm text-muted-foreground">AI-Powered English Worksheet Generator</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <Badge variant="secondary" className="tech-border">
-                <Zap className="h-3 w-3 mr-1" />
-                K-12 Ready
-              </Badge>
-              <div className="flex items-center gap-2">
-                {isSignedIn && userRole && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowDashboard(!showDashboard)}
-                    className="bg-white/5 border-white/20 text-white hover:bg-white/10"
-                  >
-                    {showDashboard ? 'Worksheet Generator' : 'My Dashboard'}
-                  </Button>
-                )}
-                <AuthButton />
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
-
+    <div className="min-h-screen bg-gradient-to-b from-gray-900 to-black">
       <main className="container mx-auto px-6 py-8">
         {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold mb-4 glow-text">
-            Generate Custom English Worksheets
-          </h2>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Create personalized grammar, vocabulary, and reading comprehension worksheets
-            tailored to any K-12 grade level with AI-powered content generation.
-          </p>
-        </div>
-
-        {/* Configuration Section */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          {/* Grade Selection */}
-          <Card className="tech-card tech-hover">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Select Grade Level
-              </CardTitle>
-              <CardDescription>
-                Choose the appropriate grade level for your worksheet
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Select value={selectedGrade} onValueChange={setSelectedGrade}>
-                <SelectTrigger className="tech-border">
-                  <SelectValue placeholder="Select grade..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {grades.map(grade => (
-                    <SelectItem key={grade} value={grade}>
-                      {grade === "K" ? "Kindergarten" : `Grade ${grade}`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </CardContent>
-          </Card>
-
-          {/* Worksheet Type Selection */}
-          <Card className="tech-card tech-hover lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Choose Worksheet Type</CardTitle>
-              <CardDescription>
-                Select the type of English skills to focus on
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {worksheetTypes.map(type => (
-                  <Button
-                    key={type.id}
-                    variant={selectedType === type.id ? "default" : "outline"}
-                    className={`h-auto p-4 flex flex-col items-center space-y-2 tech-hover ${
-                      selectedType === type.id ? "glow-border" : "tech-border"
-                    }`}
-                    onClick={() => setSelectedType(type.id)}
-                  >
-                    <div className={`p-2 rounded-lg bg-gradient-to-r ${type.color} text-white`}>
-                      {type.icon}
-                    </div>
-                    <div className="text-center">
-                      <div className="font-semibold">{type.title}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {type.description}
-                      </div>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Topics Selection */}
-        {selectedGrade && selectedType && (
-          <Card className="tech-card mb-8">
-            <CardHeader>
-              <CardTitle>Select Topics</CardTitle>
-              <CardDescription>
-                Choose specific topics to include in your worksheet
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {getCurrentTopics().map(topic => (
-                  <Button
-                    key={topic.id}
-                    variant={selectedTopics.includes(topic.id) ? "default" : "outline"}
-                    className={`h-auto p-4 text-left tech-hover ${
-                      selectedTopics.includes(topic.id) ? "glow-border" : "tech-border"
-                    }`}
-                    onClick={() => handleTopicToggle(topic.id)}
-                  >
-                    <div>
-                      <div className="font-semibold">{topic.name}</div>
-                      <div className="text-xs text-muted-foreground mt-1">
-                        {topic.description}
-                      </div>
-                    </div>
-                  </Button>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Generate Button */}
-        {selectedGrade && selectedType && selectedTopics.length > 0 && (
-          <div className="text-center">
-            <Button
-              size="lg"
-              onClick={handleGenerateWorksheet}
-              disabled={isGenerating}
-              className="px-8 py-4 text-lg glow-border tech-hover"
-            >
-              {isGenerating ? (
-                <>
-                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2" />
-                  Generating Worksheet...
-                </>
-              ) : (
-                <>
-                  <Sparkles className="h-5 w-5 mr-2" />
-                  Generate AI Worksheet
-                </>
-              )}
-            </Button>
-            <p className="text-sm text-muted-foreground mt-4">
-              Selected: {selectedTopics.length} topic{selectedTopics.length !== 1 ? 's' : ''} •
-              Grade {selectedGrade === "K" ? "K" : selectedGrade} •
-              {worksheetTypes.find(t => t.id === selectedType)?.title}
-            </p>
+        <div className="flex flex-col items-center justify-center min-h-[70vh] text-center py-16">
+          <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0 opacity-10">
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500 rounded-full filter blur-3xl animate-blob"></div>
+            <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-500 rounded-full filter blur-3xl animate-blob animation-delay-2000"></div>
+            <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-pink-500 rounded-full filter blur-3xl animate-blob animation-delay-4000"></div>
           </div>
-        )}
+          
+          <div className="relative z-10">
+            <h1 className="text-5xl md:text-6xl font-bold mb-6 bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+              AI-Powered Worksheet Generator
+            </h1>
+            <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-10">
+              Create personalized English worksheets tailored to your learning needs with our
+              intelligent AI system. Perfect for students of all grade levels.
+            </p>
+            <Button 
+              size="lg" 
+              onClick={handleGetStarted}
+              className="px-8 py-6 text-lg bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 shadow-lg hover:shadow-xl transition-all"
+            >
+              <Sparkles className="h-5 w-5 mr-2" />
+              {isSignedIn ? 'Create Worksheet' : 'Get Started'}
+            </Button>
+          </div>
+        </div>
 
-        {/* Features Preview */}
-        <div className="mt-16">
-          <h3 className="text-2xl font-bold text-center mb-8 glow-text">
-            Powerful Features
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                title: "AI-Generated Content",
-                description: "Unique worksheets every time",
-                icon: <Brain className="h-8 w-8" />
-              },
-              {
-                title: "Grade-Appropriate",
-                description: "Tailored to K-12 standards",
-                icon: <Target className="h-8 w-8" />
-              },
-              {
-                title: "Multiple Formats",
-                description: "PDF, print-ready layouts",
-                icon: <FileText className="h-8 w-8" />
-              },
-              {
-                title: "Instant Generation",
-                description: "Ready in seconds",
-                icon: <Zap className="h-8 w-8" />
-              }
-            ].map((feature) => (
-              <Card key={feature.title} className="tech-card tech-hover text-center">
+        {/* Features Section */}
+        <div className="py-20 relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-900/10 to-purple-900/10 rounded-3xl -z-10"></div>
+          <h2 className="text-3xl font-bold text-center mb-12">
+            <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Features</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {features.map((feature, index) => (
+              <Card key={index} className="border border-gray-800 bg-black/30 hover:bg-black/50 transition-all hover:shadow-md hover:shadow-blue-900/20">
                 <CardContent className="pt-6">
-                  <div className="flex justify-center mb-4">
-                    <div className="p-3 rounded-lg bg-primary/10 text-primary">
+                  <div className="flex justify-center mb-6">
+                    <div className={`p-4 rounded-full bg-gradient-to-r ${feature.color} text-white`}>
                       {feature.icon}
                     </div>
                   </div>
-                  <h4 className="font-semibold mb-2">{feature.title}</h4>
-                  <p className="text-sm text-muted-foreground">{feature.description}</p>
+                  <h3 className="text-xl font-semibold text-center mb-3">{feature.title}</h3>
+                  <p className="text-muted-foreground text-center">{feature.description}</p>
                 </CardContent>
               </Card>
             ))}
           </div>
         </div>
-      </main>
 
-      {/* Worksheet Generator Modal */}
-      {showGenerator && (
-        <WorksheetGenerator
-          grade={selectedGrade}
-          type={selectedType}
-          topics={selectedTopics}
-          onClose={() => setShowGenerator(false)}
-          userId={user?.id || ""}
-        />
-      )}
+        {/* How It Works Section */}
+        <div className="py-20 relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-purple-900/10 to-blue-900/10 rounded-3xl -z-10"></div>
+          <h2 className="text-3xl font-bold text-center mb-12">
+            <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">How It Works</span>
+          </h2>
+          <div className="relative">
+            <div className="absolute top-0 bottom-0 left-1/2 w-1 bg-gradient-to-b from-blue-500 to-purple-500 transform -translate-x-1/2 hidden md:block" />
+            <div className="space-y-12 relative">
+              {howItWorks.map((item, index) => (
+                <div key={index} className="flex flex-col md:flex-row items-center md:items-start gap-6">
+                  <div className="md:w-1/2 flex justify-end order-1 md:order-none">
+                    {index % 2 === 0 && (
+                      <Card className="w-full md:max-w-md border border-gray-800 bg-black/30 hover:bg-black/50 transition-all">
+                        <CardContent className="p-6">
+                          <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                          <p className="text-muted-foreground">{item.description}</p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                  <div className="z-10 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-lg shadow-lg">
+                      {item.step}
+                    </div>
+                  </div>
+                  <div className="md:w-1/2 flex justify-start order-1">
+                    {index % 2 === 1 && (
+                      <Card className="w-full md:max-w-md border border-gray-800 bg-black/30 hover:bg-black/50 transition-all">
+                        <CardContent className="p-6">
+                          <h3 className="text-xl font-semibold mb-2">{item.title}</h3>
+                          <p className="text-muted-foreground">{item.description}</p>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Testimonials */}
+        <div className="py-20 relative">
+          <div className="absolute inset-0 bg-gradient-to-b from-blue-900/10 to-purple-900/10 rounded-3xl -z-10"></div>
+          <h2 className="text-3xl font-bold text-center mb-12">
+            <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Student Testimonials</span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {testimonials.map((testimonial, index) => (
+              <Card key={index} className="border border-gray-800 bg-black/30 hover:bg-black/50 transition-all">
+                <CardContent className="p-6">
+                  <div className="mb-4 text-blue-400">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"></path>
+                      <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 1.972V11c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"></path>
+                    </svg>
+                  </div>
+                  <p className="text-lg mb-4">{testimonial.quote}</p>
+                  <p className="text-sm text-muted-foreground text-right">— {testimonial.author}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* CTA Section */}
+        <div className="py-20 text-center">
+          <Card className="border border-gray-800 bg-gradient-to-br from-blue-900/30 to-purple-900/30 p-8">
+            <CardContent className="pt-6">
+              <h2 className="text-3xl font-bold mb-6">Ready to create your first worksheet?</h2>
+              <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+                Join thousands of students who are improving their English skills with our AI-powered worksheets.
+              </p>
+              <Button 
+                size="lg" 
+                onClick={handleGetStarted}
+                className="px-8 py-6 text-lg bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 shadow-lg hover:shadow-xl transition-all group"
+              >
+                <Sparkles className="h-5 w-5 mr-2" />
+                {isSignedIn ? 'Create Worksheet Now' : 'Get Started'}
+                <ArrowRight className="h-5 w-5 ml-2 transform group-hover:translate-x-1 transition-transform" />
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
     </div>
   );
 }

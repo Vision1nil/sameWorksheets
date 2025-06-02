@@ -178,15 +178,53 @@ export class PDFGenerator {
     this.currentY += 15;
 
     this.pdf.setFontSize(11);
-    this.pdf.setFont('helvetica', 'normal');
-
-    questions.forEach((question, index) => {
-      this.checkPageBreak(10);
-
-      const answerText = `${index + 1}. ${question.answer || 'Sample answer'}`;
-      const splitAnswer = this.pdf.splitTextToSize(answerText, this.pageWidth - 2 * this.margin);
-      this.pdf.text(splitAnswer, this.margin, this.currentY);
-      this.currentY += splitAnswer.length * 5 + 3;
+    
+    // Filter out reading passages
+    const actualQuestions = questions.filter(q => !q.question.includes('READING_PASSAGE:'));
+    
+    actualQuestions.forEach((question, index) => {
+      this.checkPageBreak(20); // Ensure enough space for question and answer
+      
+      // Question number and text
+      this.pdf.setFont('helvetica', 'bold');
+      const questionNumber = index + 1;
+      const questionText = `${questionNumber}. ${question.question}`;
+      const splitQuestion = this.pdf.splitTextToSize(questionText, this.pageWidth - 2 * this.margin);
+      this.pdf.text(splitQuestion, this.margin, this.currentY);
+      this.currentY += splitQuestion.length * 5 + 5;
+      
+      // Answer
+      this.pdf.setFont('helvetica', 'normal');
+      let answerText = '';
+      
+      if (question.type === 'multiple-choice' && question.options) {
+        // For multiple choice, show which option is correct
+        const correctOption = question.answer;
+        const correctIndex = question.options.findIndex(opt => opt === correctOption);
+        const letter = correctIndex >= 0 ? String.fromCharCode(65 + correctIndex) : '?';
+        answerText = `Correct Answer: ${letter}. ${correctOption || 'Not specified'}`;
+      } else if (question.type === 'essay') {
+        // For essays, show evaluation criteria
+        answerText = 'Evaluation Criteria:\n';
+        answerText += '- Content (40%): Addresses all aspects of the prompt\n';
+        answerText += '- Organization (30%): Clear structure with logical flow\n';
+        answerText += '- Evidence (20%): Uses specific examples to support claims\n';
+        answerText += '- Language (10%): Uses appropriate vocabulary and grammar';
+        
+        if (question.answer) {
+          answerText += '\n\nSample Response:\n' + question.answer;
+        }
+      } else {
+        // For other question types
+        answerText = `Correct Answer: ${question.answer || 'Not specified'}`;
+      }
+      
+      const splitAnswer = this.pdf.splitTextToSize(answerText, this.pageWidth - 2 * this.margin - 5);
+      this.pdf.setTextColor(0, 100, 0); // Dark green for answers
+      this.pdf.text(splitAnswer, this.margin + 5, this.currentY);
+      this.pdf.setTextColor(0, 0, 0); // Reset to black
+      
+      this.currentY += splitAnswer.length * 5 + 10; // Add more space between questions
     });
   }
 
@@ -194,6 +232,22 @@ export class PDFGenerator {
     if (this.currentY + requiredSpace > this.pageHeight - this.margin) {
       this.pdf.addPage();
       this.currentY = this.margin;
+    }
+  }
+
+  // Main method to generate PDF with optional answer key
+  async generatePDF(worksheetData: WorksheetData, showAnswerKey: boolean = false): Promise<void> {
+    try {
+      // Use the existing method but control answer key display based on parameter
+      const dataWithAnswerKey = {
+        ...worksheetData,
+        includeAnswerKey: showAnswerKey
+      };
+      
+      await this.generateWorksheetPDF(dataWithAnswerKey);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      throw error;
     }
   }
 }

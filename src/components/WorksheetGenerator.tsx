@@ -26,8 +26,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { AIWorksheetGenerator, AIGeneratedWorksheet } from "@/lib/ai-generator";
+import { AIGeneratedWorksheet } from "@/lib/ai-generator";
 import { saveWorksheet, saveStudentProgress, StudentAnswer } from "@/lib/database";
+import { aiService, WorksheetRequest } from "@/lib/ai-service";
 import { PDFGenerator } from "@/lib/pdf-generator";
 import { Topic, getGradeTopics } from "@/lib/topics";
 import { InteractiveWorksheet } from "./InteractiveWorksheet";
@@ -77,17 +78,9 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
     allowRetries: true,
   });
 
-  // AI-powered worksheet generation using Google AI Studio
+  // AI-powered worksheet generation using optimized AI service
   const generateWorksheet = async (): Promise<GeneratedWorksheet> => {
     try {
-      const worksheetTypes = {
-        grammar: "Grammar Practice",
-        vocabulary: "Vocabulary Builder",
-        readingComprehension: "Reading Comprehension"
-      };
-
-      const gradeLevel = grade === "K" ? "Kindergarten" : `Grade ${grade}`;
-      
       // Get the topics data for the selected grade and type
       const gradeTopics = getGradeTopics(grade);
       if (!gradeTopics) {
@@ -95,53 +88,54 @@ export function WorksheetGenerator({ grade, type, topics, onClose, userId }: Wor
       }
       
       // Get the selected topics data
-      const topicsArray = gradeTopics[type as keyof typeof gradeTopics];
+      const topicsKey = type as keyof typeof gradeTopics;
+      const topicsArray = gradeTopics[topicsKey];
+      
       if (!Array.isArray(topicsArray)) {
         throw new Error(`Invalid topics data for grade ${grade} and type ${type}`);
       }
-      
-      const selectedTopics = topics.map(topicId => {
-        const topicData = topicsArray.find((t) => t.id === topicId);
-        if (!topicData) {
-          throw new Error(`Topic ${topicId} not found for grade ${grade} and type ${type}`);
-        }
-        return topicData;
-      });
-      
-      // Initialize the AI generator
-      const aiGenerator = new AIWorksheetGenerator();
-      
-      // Generate the worksheet using AI
-      const aiWorksheet = await aiGenerator.generateWorksheet({
+
+      // Filter and type the selected topics
+      const selectedTopics = topicsArray.filter((topic: Topic) => topics.includes(topic.id));
+
+      // Prepare the worksheet request
+      const request: WorksheetRequest = {
         grade,
         type: type as 'grammar' | 'vocabulary' | 'readingComprehension',
         topics: selectedTopics,
         difficulty: difficultyConfig.level,
         questionCount: difficultyConfig.questionsCount,
         includeAnswerKey: difficultyConfig.includeAnswerKey,
+        timeLimit: difficultyConfig.timeLimit,
         showHints: difficultyConfig.showHints,
         allowRetries: difficultyConfig.allowRetries
-      });
-      
-      // Convert to the expected format
-      const formattedQuestions = aiWorksheet.questions.map(q => ({
-        id: parseInt(q.id),
-        type: q.type as "multiple-choice" | "fill-blank" | "short-answer" | "essay",
-        question: q.question,
-        options: q.options,
-        answer: Array.isArray(q.correctAnswer) ? q.correctAnswer.join(', ') : q.correctAnswer
-      }));
+      };
+
+      // Generate worksheet using the optimized AI service
+      const result = await aiService.generateWorksheet(request);
       
       // Create answer key
       const answerKey: Record<number, string> = {};
-      formattedQuestions.forEach(q => {
-        answerKey[q.id] = q.answer || '';
+      result.questions.forEach((q: { answer?: string }, index: number) => {
+        answerKey[index + 1] = q.answer || '';
       });
       
+      // Transform the result to match our expected format
       return {
-        title: aiWorksheet.title,
-        instructions: aiWorksheet.instructions,
-        questions: formattedQuestions,
+        title: result.title,
+        instructions: result.instructions,
+        questions: result.questions.map((q: {
+          type: string;
+          question: string;
+          options?: string[];
+          answer?: string;
+        }, index: number) => ({
+          id: index + 1,
+          type: q.type as 'multiple-choice' | 'fill-blank' | 'short-answer' | 'essay',
+          question: q.question,
+          options: q.options,
+          answer: q.answer
+        })),
         answerKey
       };
     } catch (error) {

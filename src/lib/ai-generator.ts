@@ -15,6 +15,7 @@ export interface AIWorksheetRequest {
   grade: string;
   type: 'grammar' | 'vocabulary' | 'readingComprehension';
   topics: Topic[];
+  questionTypes?: string[];
   difficulty: 'easy' | 'medium' | 'hard';
   questionCount: number;
   includeAnswerKey: boolean;
@@ -51,7 +52,7 @@ export interface AIGradingResponse {
 // Google AI Studio API client
 export class AIWorksheetGenerator {
   private apiKey: string;
-  private apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent';
+  private apiEndpoint = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
   constructor() {
     // Get API key from environment variable
@@ -151,7 +152,7 @@ export class AIWorksheetGenerator {
    * Create a prompt for the AI based on the worksheet parameters
    */
   private createPrompt(params: AIWorksheetRequest, topicNames: string): string {
-    const { grade, type, difficulty, questionCount, includeAnswerKey, timeLimit, showHints, allowRetries } = params;
+    const { grade, type, difficulty, questionCount, includeAnswerKey, questionTypes: requestedTypes, showHints, timeLimit } = params;
     const gradeLevel = grade === 'K' ? 'Kindergarten' : `Grade ${grade}`;
     
     const worksheetTypes = {
@@ -166,11 +167,26 @@ export class AIWorksheetGenerator {
       hard: "critical thinking and evaluation"
     };
 
-    const questionTypes = {
-      grammar: ["multiple-choice", "fill-blank", "short-answer"],
-      vocabulary: ["multiple-choice", "fill-blank", "short-answer"],
-      readingComprehension: ["multiple-choice", "short-answer", "essay"]
+    // STRICTLY use only the question types selected by the user
+    let questionTypes: string[];
+    
+    // Map from UI question type IDs to AI prompt question types
+    const typeMapping: Record<string, string> = {
+      'multiple-choice': 'multiple-choice',
+      'fill-blank': 'fill-blank',
+      'short-answer': 'short-answer',
+      'long-answer': 'short-answer',
+      'essay': 'essay'
     };
+    
+    if (requestedTypes && requestedTypes.length > 0) {
+      // Convert UI question types to AI prompt question types
+      questionTypes = requestedTypes.map((qType: string) => typeMapping[qType] || qType);
+    } else {
+      // Fallback to default question types if none provided
+      // This should rarely happen as the UI enforces at least one selection
+      questionTypes = ["multiple-choice"];
+    }
 
     return `
 Create an educational worksheet for ${gradeLevel} students focusing on ${worksheetTypes[type]}.
@@ -178,7 +194,7 @@ Topics to cover: ${topicNames}
 Difficulty level: ${difficulty} (${difficultyDescriptions[difficulty]})
 
 Please generate ${questionCount} questions with the following specifications:
-1. Create a mix of the following question types: ${questionTypes[type].join(', ')}
+1. IMPORTANT: ONLY create questions of the following types: ${questionTypes.join(', ')}. DO NOT include any other question types.
 2. For multiple-choice questions, provide 4 options with one correct answer
 3. For fill-in-the-blank questions, provide the correct answer
 4. For short-answer questions, provide a sample correct answer
